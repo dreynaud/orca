@@ -17,11 +17,23 @@
 package com.netflix.spinnaker.orca.kato.pipeline.support
 
 import com.netflix.spinnaker.orca.clouddriver.pipeline.servergroup.strategies.RollingRedBlackStageData
+import com.netflix.spinnaker.orca.clouddriver.pipeline.servergroup.support.Location
 import com.netflix.spinnaker.orca.clouddriver.pipeline.servergroup.support.TargetServerGroup
 import com.netflix.spinnaker.orca.clouddriver.pipeline.servergroup.support.TargetServerGroupResolver
-import com.netflix.spinnaker.orca.pipeline.model.Stage;
+import com.netflix.spinnaker.orca.clouddriver.utils.OortHelper
+import com.netflix.spinnaker.orca.kato.pipeline.support.ResizeStrategy.Capacity
+import com.netflix.spinnaker.orca.pipeline.model.Stage
+import groovy.util.logging.Slf4j
+import org.springframework.beans.factory.annotation.Autowired
+import org.springframework.stereotype.Component;
 
+@Component
+@Slf4j
 public class ResizeStrategySupport {
+
+  @Autowired
+  OortHelper oortHelper;
+
   static ResizeStrategy.Source getSource(TargetServerGroupResolver targetServerGroupResolver,
                                          StageData stageData,
                                          Map baseContext) {
@@ -49,5 +61,95 @@ public class ResizeStrategySupport {
       credentials: stageData.credentials ?: stageData.account,
       cloudProvider: stageData.cloudProvider
     )
+  }
+
+  public ResizeStrategy.Capacity getCapacity(String account,
+                                             String serverGroupName,
+                                             String cloudProvider,
+                                             String location) {
+    TargetServerGroup tsg = oortHelper.getTargetServerGroup(account, serverGroupName, location, cloudProvider)
+      .orElseThrow({
+      new IllegalStateException("no server group found $cloudProvider/$account/$serverGroupName in $location")
+    })
+
+    def currentMin = Integer.parseInt(tsg.capacity.min.toString())
+    def currentDesired = Integer.parseInt(tsg.capacity.desired.toString())
+    def currentMax = Integer.parseInt(tsg.capacity.max.toString())
+
+    return new ResizeStrategy.Capacity(currentMax, currentDesired, currentMin)
+  }
+
+  ResizeStrategy.Capacity pinMin(ResizeStrategy.Capacity capacity) {
+    return new ResizeStrategy.Capacity(
+      capacity.max,
+      capacity.desired,
+      capacity.desired
+    )
+  }
+
+  ResizeStrategy.Capacity unpinMin(ResizeStrategy.Capacity capacity, Integer originalMin) {
+    if (originalMin > capacity.min) {
+      log.warn("Can not unpin the minimum of ${capacity} to a higher originalMin=${originalMin}")
+      return capacity
+    }
+
+    return new ResizeStrategy.Capacity(
+      capacity.max,
+      capacity.desired,
+      originalMin)
+  }
+
+
+  ResizeStrategy.Capacity pinCapacity(ResizeStrategy.Capacity capacity) {
+    return new ResizeStrategy.Capacity(
+      capacity.desired,
+      capacity.desired,
+      capacity.desired
+    )
+  }
+
+  ResizeStrategy.Capacity scalePct(ResizeStrategy.Capacity capacity, double factor) {
+    // scalePct only applies to the desired capacity
+    def newDesired = (Integer) Math.ceil(capacity.desired * factor)
+    return new ResizeStrategy.Capacity(
+      Math.max(capacity.max, newDesired), // in case scalePct pushed desired above current max
+      newDesired,
+      Math.min(capacity.min, newDesired)) // in case scalePct pushed desired below current min
+  }
+
+  ResizeStrategy.Capacity performScalingAndPinning(Capacity sourceCapacity,
+                                                   Stage stage,
+                                                   ResizeStrategy.OptionalConfiguration resizeConfig) {
+    StageData stageData = stage.mapTo(StageData)
+
+    def newCapacity = sourceCapacity
+    if (resizeConfig.scalePct != null) {
+      double factor = resizeConfig.scalePct / 100.0d
+      newCapacity = scalePct(sourceCapacity, factor)
+    }
+
+    if (stageData.unpinMinimumCapacity) {
+      def originalSourceCapacity = stage.context.get("originalCapacity.${source.serverGroupName}".toString())
+      if (originalSourceCapacity) {
+        newCapacity = unpinMin(newCapacity, originalSourceCapacity.min as Integer)
+      } else {
+        log.warn("Resize stage has unpinMinimumCapacity==true but no originalCapacity.${source.serverGroupName} in stage context")
+      }
+    }
+
+    if (stageData.pinCapacity) {
+      return pinCapacity(newCapacity)
+    }
+
+    return stageData.pinMinimumCapacity ? pinMin(newCapacity) : newCapacity
+  }
+
+  static class StageData {
+    ResizeStrategy.Source source
+
+    // whether or not `min` capacity should be set to `desired` capacity
+    boolean pinMinimumCapacity
+    boolean unpinMinimumCapacity = false
+    boolean pinCapacity
   }
 }

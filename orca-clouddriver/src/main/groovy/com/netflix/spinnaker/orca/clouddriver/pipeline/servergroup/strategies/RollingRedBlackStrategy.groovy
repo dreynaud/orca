@@ -87,6 +87,10 @@ class RollingRedBlackStrategy implements Strategy, ApplicationContextAware {
       stage.context.useSourceCapacity = false
     }
 
+    // XXX wat?
+    stage.context.fallbackCapacity = stage.context.capacity
+
+    // we first create the new server group with an initial size of 0
     stage.context.capacity = [
       min    : 0,
       max    : 0,
@@ -94,7 +98,7 @@ class RollingRedBlackStrategy implements Strategy, ApplicationContextAware {
     ]
 
     def targetPercentages = stageData.getTargetPercentages()
-    if (targetPercentages.size() == 0 || targetPercentages[-1] != 100) {
+    if (targetPercentages.isEmpty() || targetPercentages[-1] != 100) {
       targetPercentages.add(100)
     }
 
@@ -112,7 +116,12 @@ class RollingRedBlackStrategy implements Strategy, ApplicationContextAware {
       SyntheticStageOwner.STAGE_AFTER
     )
 
-    def source = getSource(targetServerGroupResolver, stageData, baseContext)
+    def source = null
+    try {
+      source = getSource(targetServerGroupResolver, stageData, baseContext)
+    } catch (TargetServerGroup.NotFoundException e) {
+      log.warn("no source server group", e)
+    }
 
     // java .forEach rather than groovy .each, since the nested .each closure sometimes omits parent context
     targetPercentages.forEach({ p ->
@@ -122,9 +131,9 @@ class RollingRedBlackStrategy implements Strategy, ApplicationContextAware {
         source              : source,
         targetLocation      : cleanupConfig.location,
         scalePct            : p,
-        pinCapacity         : p < 100, // if p < 100, capacity should be pinned (min == max == desired)
+        pinCapacity         : p < 100,  // if p < 100, capacity should be pinned (min == max == desired)
         unpinMinimumCapacity: p == 100, // if p == 100, min capacity should be restored to the original unpinned value from source
-        useNameAsLabel      : true     // hint to deck that it should _not_ override the name
+        useNameAsLabel      : true      // hint to deck that it should _not_ override the name
       ]
 
       def resizeStage = newStage(
