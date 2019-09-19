@@ -22,13 +22,22 @@ import com.netflix.spinnaker.orca.clouddriver.pipeline.providers.aws.CaptureSour
 import com.netflix.spinnaker.orca.clouddriver.pipeline.servergroup.DisableServerGroupStage
 import com.netflix.spinnaker.orca.clouddriver.pipeline.servergroup.EnableServerGroupStage
 import com.netflix.spinnaker.orca.clouddriver.pipeline.servergroup.ResizeServerGroupStage
+import com.netflix.spinnaker.orca.clouddriver.pipeline.servergroup.strategies.Capacity
+import com.netflix.spinnaker.orca.clouddriver.pipeline.servergroup.support.TargetServerGroup
+import com.netflix.spinnaker.orca.clouddriver.utils.OortHelper
 import com.netflix.spinnaker.orca.kato.pipeline.support.ResizeStrategy
 import com.netflix.spinnaker.orca.pipeline.WaitStage
 import com.netflix.spinnaker.orca.pipeline.model.Stage
 import com.netflix.spinnaker.orca.pipeline.model.SyntheticStageOwner
+import groovy.util.logging.Slf4j
 import org.springframework.beans.factory.annotation.Autowired
+import sun.reflect.generics.visitor.Reifier
+
+import javax.annotation.Nullable
+
 import static com.netflix.spinnaker.orca.pipeline.StageDefinitionBuilder.newStage
 
+@Slf4j
 class ExplicitRollback implements Rollback {
   String rollbackServerGroupName
   String restoreServerGroupName
@@ -61,6 +70,10 @@ class ExplicitRollback implements Rollback {
   @JsonIgnore
   WaitStage waitStage
 
+  @Autowired
+  @JsonIgnore
+  OortHelper oortHelper
+
   @JsonIgnore
   @Override
   List<Stage> buildStages(Stage parentStage) {
@@ -92,29 +105,20 @@ class ExplicitRollback implements Rollback {
       ]
     }
 
-    // https://github.com/spinnaker/spinnaker/issues/4895 - capture the source capacity as early as possible
     def stages = []
+
+    // TODO: dreynaud: can make the snapshot and apply optional if we're not going to resize
+    // if the capacity has been previously captured (e.g. as part of a failed deploy), no need to do it again!
     if (!parentStage.getContext().containsKey("sourceServerGroupCapacitySnapshot")) {
-      // capacity has been previously captured (likely as part of a failed deploy), no need to do again!
       stages << buildCaptureSourceServerGroupCapacityStage(parentStage, parentStage.mapTo(ResizeStrategy.Source))
     }
 
     stages << enableServerGroupStage
 
-    Map resizeServerGroupContext = new HashMap(parentStage.context) + [
-      action                       : ResizeStrategy.ResizeAction.scale_to_server_group.toString(),
-      source                       : {
-        def source = parentStage.mapTo(ResizeStrategy.Source)
-        source.serverGroupName = rollbackServerGroupName
-        return source
-      }.call(),
-      asgName                      : restoreServerGroupName,
-      pinMinimumCapacity           : true,
-      targetHealthyDeployPercentage: targetHealthyRollbackPercentage
-    ]
-    stages << newStage(
-      parentStage.execution, resizeServerGroupStage.type, "resize", resizeServerGroupContext, parentStage, SyntheticStageOwner.STAGE_AFTER
-    )
+    def resizeStage = buildResizeStage(parentStage)
+    if (resizeStage != null) {
+      stages << resizeStage
+    }
 
     if (delayBeforeDisableSeconds != null && delayBeforeDisableSeconds > 0) {
       def waitStage = newStage(
@@ -126,6 +130,62 @@ class ExplicitRollback implements Rollback {
     stages << disableServerGroupStage
     stages << buildApplySourceServerGroupCapacityStage(parentStage, parentStage.mapTo(ResizeStrategy.Source))
     return stages
+  }
+
+  @Nullable TargetServerGroup lookupServerGroup(Stage parentStage, String serverGroupName) {
+    def fromContext = parentStage.mapTo(ResizeStrategy.Source)
+
+    try {
+      // TODO: throw some retries in there?
+      return oortHelper.getTargetServerGroup(
+        fromContext.credentials,
+        serverGroupName,
+        fromContext.location
+      ).orElse(null)
+    } catch(Exception e) {
+      log.error('Skipping resize stage because there was an error looking up {}', serverGroupName, e)
+      return null
+    }
+  }
+
+  @Nullable Stage buildResizeStage(Stage parentStage) {
+    def sourceServerGroup = lookupServerGroup(parentStage, rollbackServerGroupName)
+    if (!sourceServerGroup) {
+      return null
+    }
+
+    def targetServerGroup = lookupServerGroup(parentStage, restoreServerGroupName)
+    if (!targetServerGroup) {
+      return null
+    }
+
+    // using max of source and target because we don't want to scale down restoreServerGroupName if rollbackServerGroupName
+    // became smaller for some reason
+    ResizeStrategy.Capacity desiredCapacity = [
+      max: Math.max(sourceServerGroup.capacity.max, targetServerGroup.capacity.max),
+      desired: Math.max(sourceServerGroup.capacity.desired, targetServerGroup.capacity.desired)
+    ]
+
+    // let's directly produce a capacity with a pinned min instead of relying on the resize stage
+    desiredCapacity.min = desiredCapacity.desired
+
+    // for this assignment to work we rely on targetServerGroup.capacity being a map like [min: 1, desired: 2, max: 3]
+    ResizeStrategy.Capacity currentCapacity = targetServerGroup.capacity
+    if (currentCapacity == desiredCapacity) {
+      log.info('Skipping resize stage because the current capacity of the rollback target {} is the same as the desired capacity {}',
+        restoreServerGroupName, desiredCapacity)
+      return null
+    }
+
+    Map resizeServerGroupContext = new HashMap(parentStage.context) + [
+      action                       : ResizeStrategy.ResizeAction.scale_exact.toString(),
+      capacity                     : desiredCapacity,
+      asgName                      : restoreServerGroupName,
+      pinMinimumCapacity           : true,
+      targetHealthyDeployPercentage: targetHealthyRollbackPercentage
+    ]
+
+    return newStage(parentStage.execution, resizeServerGroupStage.type, "resize", resizeServerGroupContext, parentStage, SyntheticStageOwner.STAGE_AFTER)
   }
 
   Stage buildCaptureSourceServerGroupCapacityStage(Stage parentStage,
