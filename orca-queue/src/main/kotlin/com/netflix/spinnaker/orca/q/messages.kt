@@ -321,7 +321,8 @@ data class ResumeExecution(
 }
 
 @JsonTypeName("cancelExecution")
-data class CancelExecution(
+data class
+CancelExecution(
   override val executionType: ExecutionType,
   override val executionId: String,
   override val application: String,

@@ -25,6 +25,10 @@ import com.netflix.spinnaker.orca.ExecutionStatus.CANCELED
 import com.netflix.spinnaker.orca.ExecutionStatus.NOT_STARTED
 import com.netflix.spinnaker.orca.ExecutionStatus.PAUSED
 import com.netflix.spinnaker.orca.ExecutionStatus.RUNNING
+import com.netflix.spinnaker.orca.interlink.Interlink
+import com.netflix.spinnaker.orca.interlink.events.PauseInterlinkEvent
+import com.netflix.spinnaker.orca.interlink.events.CancelInterlinkEvent
+import com.netflix.spinnaker.orca.interlink.events.DeleteInterlinkEvent
 import com.netflix.spinnaker.orca.pipeline.model.Execution
 import com.netflix.spinnaker.orca.pipeline.model.Execution.ExecutionType
 import com.netflix.spinnaker.orca.pipeline.model.Execution.ExecutionType.ORCHESTRATION
@@ -75,7 +79,8 @@ class SqlExecutionRepository(
   private val retryProperties: RetryProperties,
   private val batchReadSize: Int = 10,
   private val stageReadSize: Int = 200,
-  private val poolName: String = "default"
+  private val poolName: String = "default",
+  private val interlink: Interlink? = null
 ) : ExecutionRepository, ExecutionStatisticsRepository {
   companion object {
     val ulid = SpinULID(SecureRandom())
@@ -131,6 +136,11 @@ class SqlExecutionRepository(
       jooq.transactional {
         selectExecution(it, type, id)
           ?.let { execution ->
+            // TODO: check partition here
+            if (!execution.isCanceled) {
+              interlink?.publish(CancelInterlinkEvent(type, id, user, reason))
+            }
+
             execution.isCanceled = true
             if (user != null) {
               execution.canceledBy = user
@@ -141,6 +151,7 @@ class SqlExecutionRepository(
             if (execution.status == NOT_STARTED) {
               execution.status = CANCELED
             }
+
             storeExecutionInternal(it, execution)
           }
       }
@@ -163,6 +174,9 @@ class SqlExecutionRepository(
               pausedBy = user
               pauseTime = currentTimeMillis()
             }
+
+            // TODO: check partition here
+            interlink?.publish(PauseInterlinkEvent(type, id, user))
             storeExecutionInternal(it, execution)
           }
       }
@@ -226,6 +240,7 @@ class SqlExecutionRepository(
   override fun delete(type: ExecutionType, id: String) {
     validateHandledPartitionOrThrow(type, id)
 
+    interlink?.publish(DeleteInterlinkEvent(type, id))
     val correlationField = if (type == PIPELINE) "pipeline_id" else "orchestration_id"
     val (ulid, _) = mapLegacyId(jooq, type.tableName, id)
 
