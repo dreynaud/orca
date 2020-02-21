@@ -28,7 +28,6 @@ import com.netflix.spinnaker.orca.config.PreprocessorConfiguration;
 import com.netflix.spinnaker.orca.interlink.Interlink;
 import com.netflix.spinnaker.orca.interlink.aws.InterlinkAmazonMessageHandler;
 import com.netflix.spinnaker.orca.pipeline.persistence.ExecutionRepository;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -44,7 +43,7 @@ import org.springframework.context.annotation.Import;
 @ConditionalOnProperty("interlink.enabled")
 public class InterlinkConfiguration {
   @Bean
-  @ConditionalOnExpression("${interlink.enabled} && ${pubsub.enabled} && ${pubsub.amazon.enabled}")
+  @ConditionalOnProperty({"pubsub.enabled", "pubsub.amazon.enabled"})
   public AmazonPubsubMessageHandlerFactory amazonPubsubMessageHandlerFactory(
       ObjectMapper objectMapper, ExecutionRepository repository) {
     return new AmazonPubsubMessageHandlerFactory() {
@@ -61,9 +60,9 @@ public class InterlinkConfiguration {
   }
 
   @Bean
-  @ConditionalOnProperty("interlink.enabled")
-  public Interlink interlink(
-      PubsubPublishers publishers, ObjectMapper objectMapper, SNSPublisherProvider provider) {
-    return new Interlink(null, publishers, objectMapper);
+  @ConditionalOnProperty({"pubsub.enabled", "pubsub.amazon.enabled"})
+  public Interlink amazonInterlink(
+      PubsubPublishers publishers, ObjectMapper objectMapper, SNSPublisherProvider snsProvider) {
+    return new Interlink(publishers, objectMapper);
   }
 }

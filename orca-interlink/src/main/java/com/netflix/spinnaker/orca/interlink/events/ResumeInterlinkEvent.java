@@ -16,35 +16,26 @@
 
 package com.netflix.spinnaker.orca.interlink.events;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonSubTypes;
-import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import static com.netflix.spinnaker.orca.interlink.events.InterlinkEvent.EventType.RESUME;
+
 import com.netflix.spinnaker.orca.pipeline.model.Execution;
 import com.netflix.spinnaker.orca.pipeline.persistence.ExecutionRepository;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 
-@JsonTypeInfo(
-    use = JsonTypeInfo.Id.NAME,
-    include = JsonTypeInfo.As.PROPERTY,
-    property = "eventType")
-@JsonSubTypes({
-  @JsonSubTypes.Type(value = CancelInterlinkEvent.class, name = "CANCEL"),
-  @JsonSubTypes.Type(value = PauseInterlinkEvent.class, name = "PAUSE"),
-  @JsonSubTypes.Type(value = DeleteInterlinkEvent.class, name = "DELETE")
-})
-public interface InterlinkEvent {
-  enum EventType {
-    CANCEL,
-    PAUSE,
-    DELETE,
-    RESUME
+@Data
+@AllArgsConstructor
+@NoArgsConstructor
+public class ResumeInterlinkEvent implements InterlinkEvent {
+  final EventType eventType = RESUME;
+  Execution.ExecutionType executionType;
+  String executionId;
+  String canceledBy;
+  Boolean ignoreCurrentStatus;
+
+  @Override
+  public void applyTo(ExecutionRepository executionRepository) {
+    executionRepository.resume(executionType, executionId, canceledBy, ignoreCurrentStatus);
   }
-
-  @JsonIgnore
-  EventType getEventType();
-
-  Execution.ExecutionType getExecutionType();
-
-  String getExecutionId();
-
-  void applyTo(ExecutionRepository executionRepository);
 }

@@ -18,8 +18,8 @@ package com.netflix.spinnaker.orca.interlink;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.netflix.spinnaker.kork.exceptions.SystemException;
 import com.netflix.spinnaker.kork.pubsub.PubsubPublishers;
-import com.netflix.spinnaker.kork.pubsub.PubsubSubscribers;
 import com.netflix.spinnaker.kork.pubsub.model.PubsubPublisher;
 import com.netflix.spinnaker.orca.interlink.events.InterlinkEvent;
 import java.util.stream.Collectors;
@@ -30,11 +30,9 @@ public class Interlink {
   private final PubsubPublisher publisher;
   private final ObjectMapper objectMapper;
 
-  public Interlink(
-      PubsubSubscribers subscribers, PubsubPublishers publishers, ObjectMapper objectMapper) {
+  public Interlink(PubsubPublishers publishers, ObjectMapper objectMapper, Object... providers) {
     this.objectMapper = objectMapper;
 
-    // TODO: skip if not enabled? make the whole bean optional?
     publisher =
         publishers.getAll().stream()
             .filter(pubsubPublisher -> "interlink".equals(pubsubPublisher.getTopicName()))
@@ -42,11 +40,12 @@ public class Interlink {
             .orElse(null);
 
     if (publisher == null) {
-      log.warn(
-          "could not find interlink publisher in {}",
-          publishers.getAll().stream()
-              .map(PubsubPublisher::getTopicName)
-              .collect(Collectors.joining(", ")));
+      throw new SystemException(
+          "could not find interlink publisher in ["
+              + publishers.getAll().stream()
+                  .map(PubsubPublisher::getTopicName)
+                  .collect(Collectors.joining(", "))
+              + "]");
     }
   }
 
@@ -57,7 +56,4 @@ public class Interlink {
       log.error("Failed to serialize event {}", event, e);
     }
   }
-
-  // TODO:
-  // dynamic disable?
 }
