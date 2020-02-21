@@ -18,6 +18,8 @@ package com.netflix.spinnaker.orca.interlink;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.netflix.spectator.api.Counter;
+import com.netflix.spectator.api.Registry;
 import com.netflix.spinnaker.kork.exceptions.SystemException;
 import com.netflix.spinnaker.kork.pubsub.PubsubPublishers;
 import com.netflix.spinnaker.kork.pubsub.model.PubsubPublisher;
@@ -29,9 +31,16 @@ import lombok.extern.slf4j.Slf4j;
 public class Interlink {
   private final PubsubPublisher publisher;
   private final ObjectMapper objectMapper;
+  private final MessageFlagger flagger;
+  private Counter flaggedCounter;
 
-  public Interlink(PubsubPublishers publishers, ObjectMapper objectMapper, Object... providers) {
+  public Interlink(
+      PubsubPublishers publishers,
+      ObjectMapper objectMapper,
+      MessageFlagger flagger,
+      Registry registry) {
     this.objectMapper = objectMapper;
+    this.flagger = flagger;
 
     publisher =
         publishers.getAll().stream()
@@ -47,9 +56,21 @@ public class Interlink {
                   .collect(Collectors.joining(", "))
               + "]");
     }
+
+    this.flaggedCounter =
+        registry.counter(
+            "pubsub." + publisher.getPubsubSystem() + ".flagged",
+            "subscription",
+            publisher.getName());
   }
 
   public void publish(InterlinkEvent event) {
+    if (flagger.isFlagged(event)) {
+      log.warn("Event {} has been flagged, not publishing to interlink", event);
+      flaggedCounter.increment();
+      return;
+    }
+
     try {
       publisher.publish(objectMapper.writeValueAsString(event));
     } catch (JsonProcessingException e) {

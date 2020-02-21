@@ -29,6 +29,7 @@ import com.netflix.spinnaker.orca.pipeline.persistence.ExecutionRepository;
 @JsonSubTypes({
   @JsonSubTypes.Type(value = CancelInterlinkEvent.class, name = "CANCEL"),
   @JsonSubTypes.Type(value = PauseInterlinkEvent.class, name = "PAUSE"),
+  @JsonSubTypes.Type(value = PauseInterlinkEvent.class, name = "RESUME"),
   @JsonSubTypes.Type(value = DeleteInterlinkEvent.class, name = "DELETE")
 })
 public interface InterlinkEvent {

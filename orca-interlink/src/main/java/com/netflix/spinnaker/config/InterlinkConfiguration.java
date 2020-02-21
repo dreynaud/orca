@@ -26,9 +26,11 @@ import com.netflix.spinnaker.kork.pubsub.aws.config.AmazonPubsubProperties;
 import com.netflix.spinnaker.kork.pubsub.config.PubsubConfig;
 import com.netflix.spinnaker.orca.config.PreprocessorConfiguration;
 import com.netflix.spinnaker.orca.interlink.Interlink;
+import com.netflix.spinnaker.orca.interlink.MessageFlagger;
 import com.netflix.spinnaker.orca.interlink.aws.InterlinkAmazonMessageHandler;
 import com.netflix.spinnaker.orca.pipeline.persistence.ExecutionRepository;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.annotation.Import;
@@ -41,6 +43,7 @@ import org.springframework.context.annotation.Import;
   AmazonPubsubConfig.class
 })
 @ConditionalOnProperty("interlink.enabled")
+@EnableConfigurationProperties(InterlinkConfigurationProperties.class)
 public class InterlinkConfiguration {
   @Bean
   @ConditionalOnProperty({"pubsub.enabled", "pubsub.amazon.enabled"})
@@ -62,7 +65,13 @@ public class InterlinkConfiguration {
   @Bean
   @ConditionalOnProperty({"pubsub.enabled", "pubsub.amazon.enabled"})
   public Interlink amazonInterlink(
-      PubsubPublishers publishers, ObjectMapper objectMapper, SNSPublisherProvider snsProvider) {
-    return new Interlink(publishers, objectMapper);
+      PubsubPublishers publishers,
+      ObjectMapper objectMapper,
+      InterlinkConfigurationProperties properties,
+      SNSPublisherProvider snsProvider) {
+    return new Interlink(
+        publishers,
+        objectMapper,
+        new MessageFlagger(properties.flagger.maxSize, properties.flagger.threshold));
   }
 }
