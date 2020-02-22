@@ -20,17 +20,23 @@ import static com.netflix.spinnaker.orca.interlink.events.InterlinkEvent.EventTy
 
 import com.netflix.spinnaker.orca.pipeline.model.Execution;
 import com.netflix.spinnaker.orca.pipeline.persistence.ExecutionRepository;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import javax.annotation.Nullable;
+import lombok.*;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class DeleteInterlinkEvent implements InterlinkEvent {
   final EventType eventType = DELETE;
-  Execution.ExecutionType executionType;
-  String executionId;
+  @Nullable String partition;
+  @NonNull Execution.ExecutionType executionType;
+  @NonNull String executionId;
+
+  public DeleteInterlinkEvent(
+      @NonNull Execution.ExecutionType executionType, @NonNull String executionId) {
+    this.executionType = executionType;
+    this.executionId = executionId;
+  }
 
   @Override
   public void applyTo(ExecutionRepository executionRepository) {

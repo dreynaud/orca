@@ -17,31 +17,31 @@
 package com.netflix.spinnaker.orca.interlink
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import com.netflix.spinnaker.orca.interlink.events.CancelInterlinkEvent
-import com.netflix.spinnaker.orca.interlink.events.InterlinkEvent
-import com.netflix.spinnaker.orca.interlink.events.PauseInterlinkEvent
-import com.netflix.spinnaker.orca.pipeline.model.Execution
+import com.netflix.spinnaker.orca.interlink.events.*
 import spock.lang.Specification
+import spock.lang.Unroll
+
+import static com.netflix.spinnaker.orca.pipeline.model.Execution.ExecutionType.ORCHESTRATION
+import static com.netflix.spinnaker.orca.pipeline.model.Execution.ExecutionType.PIPELINE
 
 class InterlinkSpec extends Specification {
   ObjectMapper objectMapper = new ObjectMapper()
 
-  def "can parse execution event types"() {
-    given:
-    def cancelEvent = new CancelInterlinkEvent(Execution.ExecutionType.ORCHESTRATION, "execId", "user", "reason")
-    def pauseEvent = new PauseInterlinkEvent(Execution.ExecutionType.ORCHESTRATION, "execId", "user")
-
+  @Unroll
+  def "can parse execution event type #event.getEventType()"() {
     when:
-    def cancelPayload = objectMapper.writeValueAsString(cancelEvent)
-    def pausePayload = objectMapper.writeValueAsString(pauseEvent)
+    def payload = objectMapper.writeValueAsString(event)
 
     then:
-    def mappedCancelEvent = objectMapper.readValue(cancelPayload, InterlinkEvent.class)
-    mappedCancelEvent instanceof CancelInterlinkEvent
-    mappedCancelEvent == cancelEvent
+    def mappedEvent = objectMapper.readValue(payload, InterlinkEvent.class)
+    mappedEvent == event
 
-    def mappedPauseEvent = objectMapper.readValue(pausePayload, InterlinkEvent.class)
-    mappedPauseEvent instanceof PauseInterlinkEvent
-    mappedPauseEvent == pauseEvent
+    where:
+    event << [
+        new CancelInterlinkEvent(ORCHESTRATION, "execId", "user", "reason"),
+        new PauseInterlinkEvent(PIPELINE, "execId", "user"),
+        new ResumeInterlinkEvent(PIPELINE, "execId", "user", false).withPartition("partition"),
+        new DeleteInterlinkEvent(ORCHESTRATION, "execId").withPartition("partition")
+    ]
   }
 }

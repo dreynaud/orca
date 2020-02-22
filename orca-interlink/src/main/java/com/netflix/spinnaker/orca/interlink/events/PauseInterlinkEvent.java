@@ -20,18 +20,27 @@ import static com.netflix.spinnaker.orca.interlink.events.InterlinkEvent.EventTy
 
 import com.netflix.spinnaker.orca.pipeline.model.Execution;
 import com.netflix.spinnaker.orca.pipeline.persistence.ExecutionRepository;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import javax.annotation.Nullable;
+import lombok.*;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class PauseInterlinkEvent implements InterlinkEvent {
   final EventType eventType = PAUSE;
-  Execution.ExecutionType executionType;
-  String executionId;
-  String pausedBy;
+  @Nullable String partition;
+  @NonNull Execution.ExecutionType executionType;
+  @NonNull String executionId;
+  @Nullable String pausedBy;
+
+  public PauseInterlinkEvent(
+      @NonNull Execution.ExecutionType executionType,
+      @NonNull String executionId,
+      @Nullable String pausedBy) {
+    this.executionType = executionType;
+    this.executionId = executionId;
+    this.pausedBy = pausedBy;
+  }
 
   @Override
   public void applyTo(ExecutionRepository executionRepository) {

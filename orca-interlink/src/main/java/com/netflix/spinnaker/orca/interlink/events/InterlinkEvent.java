@@ -22,14 +22,12 @@ import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import com.netflix.spinnaker.orca.pipeline.model.Execution;
 import com.netflix.spinnaker.orca.pipeline.persistence.ExecutionRepository;
 
-@JsonTypeInfo(
-    use = JsonTypeInfo.Id.NAME,
-    include = JsonTypeInfo.As.PROPERTY,
-    property = "eventType")
+/** Common interface for all interlink event messages */
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "eventType")
 @JsonSubTypes({
   @JsonSubTypes.Type(value = CancelInterlinkEvent.class, name = "CANCEL"),
   @JsonSubTypes.Type(value = PauseInterlinkEvent.class, name = "PAUSE"),
-  @JsonSubTypes.Type(value = PauseInterlinkEvent.class, name = "RESUME"),
+  @JsonSubTypes.Type(value = ResumeInterlinkEvent.class, name = "RESUME"),
   @JsonSubTypes.Type(value = DeleteInterlinkEvent.class, name = "DELETE")
 })
 public interface InterlinkEvent {
@@ -37,7 +35,7 @@ public interface InterlinkEvent {
     CANCEL,
     PAUSE,
     DELETE,
-    RESUME
+    RESUME,
   }
 
   @JsonIgnore
@@ -46,6 +44,15 @@ public interface InterlinkEvent {
   Execution.ExecutionType getExecutionType();
 
   String getExecutionId();
+
+  String getPartition();
+
+  void setPartition(String partition);
+
+  default InterlinkEvent withPartition(String partition) {
+    setPartition(partition);
+    return this;
+  }
 
   void applyTo(ExecutionRepository executionRepository);
 }

@@ -17,6 +17,7 @@
 package com.netflix.spinnaker.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.netflix.spectator.api.Registry;
 import com.netflix.spinnaker.kork.pubsub.PubsubPublishers;
 import com.netflix.spinnaker.kork.pubsub.aws.SNSPublisherProvider;
 import com.netflix.spinnaker.kork.pubsub.aws.api.AmazonPubsubMessageHandler;
@@ -68,10 +69,15 @@ public class InterlinkConfiguration {
       PubsubPublishers publishers,
       ObjectMapper objectMapper,
       InterlinkConfigurationProperties properties,
+      Registry registry,
+
+      // injected here to make sure the provider ran before Interlink,
+      // otherwise the publisher may not have been initialized
       SNSPublisherProvider snsProvider) {
     return new Interlink(
         publishers,
         objectMapper,
-        new MessageFlagger(properties.flagger.maxSize, properties.flagger.threshold));
+        new MessageFlagger(properties.flagger.maxSize, properties.flagger.threshold),
+        registry);
   }
 }

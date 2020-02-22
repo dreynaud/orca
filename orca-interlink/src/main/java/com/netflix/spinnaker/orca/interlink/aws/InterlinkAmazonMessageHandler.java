@@ -19,6 +19,7 @@ package com.netflix.spinnaker.orca.interlink.aws;
 import com.amazonaws.services.sqs.model.Message;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.netflix.spinnaker.kork.annotations.VisibleForTesting;
 import com.netflix.spinnaker.kork.pubsub.aws.NotificationMessage;
 import com.netflix.spinnaker.kork.pubsub.aws.api.AmazonPubsubMessageHandler;
 import com.netflix.spinnaker.orca.interlink.InterlinkMessageHandlingException;
@@ -44,9 +45,23 @@ public class InterlinkAmazonMessageHandler implements AmazonPubsubMessageHandler
           objectMapper.readValue(message.getBody(), NotificationMessage.class);
       InterlinkEvent event = objectMapper.readValue(snsMessage.getMessage(), InterlinkEvent.class);
       log.debug("Received interlink event {}", event);
-      event.applyTo(executionRepository);
+
+      handleInternal(event);
     } catch (JsonProcessingException e) {
       throw new InterlinkMessageHandlingException(e);
+    }
+  }
+
+  @VisibleForTesting
+  void handleInternal(InterlinkEvent event) {
+    if (executionRepository.handlesPartition(event.getPartition())) {
+      event.applyTo(executionRepository);
+    } else {
+      log.debug(
+          "Execution repository with local partition {} does not handle this event's partition {}, "
+              + "so it will not be applied",
+          executionRepository.getPartition(),
+          event.getPartition());
     }
   }
 }

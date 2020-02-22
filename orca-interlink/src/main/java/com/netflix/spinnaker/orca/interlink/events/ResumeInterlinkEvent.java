@@ -20,22 +20,33 @@ import static com.netflix.spinnaker.orca.interlink.events.InterlinkEvent.EventTy
 
 import com.netflix.spinnaker.orca.pipeline.model.Execution;
 import com.netflix.spinnaker.orca.pipeline.persistence.ExecutionRepository;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import javax.annotation.Nullable;
+import lombok.*;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class ResumeInterlinkEvent implements InterlinkEvent {
   final EventType eventType = RESUME;
-  Execution.ExecutionType executionType;
-  String executionId;
-  String canceledBy;
-  Boolean ignoreCurrentStatus;
+  @Nullable String partition;
+  @NonNull Execution.ExecutionType executionType;
+  @NonNull String executionId;
+  @Nullable String user;
+  @NonNull Boolean ignoreCurrentStatus;
+
+  public ResumeInterlinkEvent(
+      @NonNull Execution.ExecutionType executionType,
+      @NonNull String executionId,
+      @Nullable String user,
+      @NonNull Boolean ignoreCurrentStatus) {
+    this.executionType = executionType;
+    this.executionId = executionId;
+    this.user = user;
+    this.ignoreCurrentStatus = ignoreCurrentStatus;
+  }
 
   @Override
   public void applyTo(ExecutionRepository executionRepository) {
-    executionRepository.resume(executionType, executionId, canceledBy, ignoreCurrentStatus);
+    executionRepository.resume(executionType, executionId, user, ignoreCurrentStatus);
   }
 }

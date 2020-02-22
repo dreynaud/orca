@@ -20,19 +20,30 @@ import static com.netflix.spinnaker.orca.interlink.events.InterlinkEvent.EventTy
 
 import com.netflix.spinnaker.orca.pipeline.model.Execution;
 import com.netflix.spinnaker.orca.pipeline.persistence.ExecutionRepository;
-import lombok.AllArgsConstructor;
-import lombok.Data;
-import lombok.NoArgsConstructor;
+import javax.annotation.Nullable;
+import lombok.*;
 
 @Data
 @AllArgsConstructor
 @NoArgsConstructor
 public class CancelInterlinkEvent implements InterlinkEvent {
   final EventType eventType = CANCEL;
-  Execution.ExecutionType executionType;
-  String executionId;
-  String canceledBy;
-  String cancellationReason;
+  @Nullable String partition;
+  @NonNull Execution.ExecutionType executionType;
+  @NonNull String executionId;
+  @Nullable String canceledBy;
+  @Nullable String cancellationReason;
+
+  public CancelInterlinkEvent(
+      @NonNull Execution.ExecutionType executionType,
+      @NonNull String executionId,
+      @Nullable String canceledBy,
+      @Nullable String cancellationReason) {
+    this.executionType = executionType;
+    this.executionId = executionId;
+    this.canceledBy = canceledBy;
+    this.cancellationReason = cancellationReason;
+  }
 
   @Override
   public void applyTo(ExecutionRepository executionRepository) {

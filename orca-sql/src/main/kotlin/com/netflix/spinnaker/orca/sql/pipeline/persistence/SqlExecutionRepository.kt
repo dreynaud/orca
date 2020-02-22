@@ -140,7 +140,7 @@ class SqlExecutionRepository(
         selectExecution(dslContext, event.executionType, event.executionId)
           ?.let { execution ->
             if (isForeign(execution)) {
-              interlink?.publish(event)
+              interlink?.publish(event.withPartition(execution.partition))
                 ?: throw ForeignExecutionException(event.executionId, execution.partition, partitionName)
             } else {
               block(execution, dslContext)
@@ -924,7 +924,7 @@ class SqlExecutionRepository(
 
   private fun isForeign(execution: Execution, shouldThrow: Boolean = false): Boolean {
     val partition = execution.partition
-    val foreign = (partition != null && partitionName != null && partitionName != partition)
+    val foreign = !handlesPartition(partition)
     if (foreign && shouldThrow) {
       throw ForeignExecutionException(execution.id, partition, partitionName)
     }
@@ -944,6 +944,10 @@ class SqlExecutionRepository(
       // Execution not found, we can proceed since the rest is likely a noop anyway
       false
     }
+  }
+
+  override fun getPartition(): String? {
+    return partitionName
   }
 
   private fun validateHandledPartitionOrThrow(executionType: ExecutionType, id: String): Boolean =
