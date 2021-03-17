@@ -181,10 +181,7 @@ public class RestorePinnedServerGroupsPoller extends AbstractPollingNotification
         AuthenticatedRequest.runAs(
                 username,
                 allowedAccount,
-                () ->
-                    executionLauncher.start(
-                        ExecutionType.ORCHESTRATION,
-                        objectMapper.writeValueAsString(cleanupOperation)))
+                () -> executionLauncher.start(ExecutionType.ORCHESTRATION, cleanupOperation))
             .call();
 
         triggeredCounter.increment();
